@@ -29,6 +29,11 @@ exports.setDocument = function (newDocument) {
   doc = newDocument;
 };
 
+var customRunHooks = [];
+exports.addRunHook = function(prelude, postlude) {
+  customRunHooks.push({prelude:prelude, postlude:postlude});
+};
+
 var Example = exports.Example = function (runner, expr, expected, attrs) {
   this.runner = runner;
   this.expr = expr;
@@ -50,8 +55,14 @@ Example.prototype = {
     this.output = [];
     this.consoleOutput = [];
     var globs = this.runner.evalInit();
+    var ctx = {};
+    extend(ctx, globs);
+    for (var i = 0; i < customRunHooks.length; i++) {
+      if (customRunHooks[i].prelude)
+        customRunHooks[i].prelude.call(ctx, this.expr);
+    }    
     try {
-      this.result = this.runner.evaller(this.expr, globs, this.filename);
+      this.result = this.runner.evaller(this.expr, ctx, this.filename);
     } catch (e) {
       if (e && e['doctest.abort']) {
         return;
@@ -62,6 +73,11 @@ Example.prototype = {
         console.log('Exception Stack:');
         console.log(e.stack);
       }
+    } finally {
+      for (var i = 0; i < customRunHooks.length; i++) {
+        if (customRunHooks[i].postlude)
+          customRunHooks[i].postlude.call(ctx, this.expr);
+      }      
     }
   },
   check: function () {
@@ -1174,7 +1190,7 @@ HTMLParser.prototype = {
         throw 'You must install or include esprima.js';
       }
     }
-    var contents = getElementText(el);
+    var contents = typeof el == "string" ? el : getElementText(el);
     var ast = esprima.parse(contents, {
       range: true,
       comment: true
